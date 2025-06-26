@@ -2,15 +2,13 @@
 ## Analyses and Regressions from the outputs of the O-U model,         ##
 ## Applied to data_krumh depth profiles                                ##
 ##                                                                     ##
-## Andeol Bourgouin                                                    ##
-## andeol.bourgouin.1@ulaval.ca                                        ##
 #########################################################################
 
 
 
 
 #### initialisation ####
-setwd("/Users/andeolbourgouin/Library/CloudStorage/OneDrive-UniversitéLaval/travail/0_these/1_foraging_areas/analyses/profondeur/dfo")
+setwd(".../codes_article/1_depth_distribution")
 library(ggplot2)
 library(scales)       # to put scale with commas in plots
 library(RColorBrewer) # for color palettes

@@ -2,9 +2,6 @@
 ## The Orsnstein - Ulhenbek depth distribution model,                  ##
 ## applied to data_krumh depth profiles                                ##
 ##                                                                     ##
-## Andeol Bourgouin                                                    ##
-## andeol.bourgouin.1@ulaval.ca                                        ##
-## From Frederic Maps' code                                            ##
 #########################################################################
 
 #How it works :
@@ -28,7 +25,7 @@ library(ecolMod)    # for the pricefit (= gradient descent) function
 library(parallel)   # to make parallel computations
 library(doParallel) # to make parallel computations
 
-setwd("/Users/andeolbourgouin/Library/CloudStorage/OneDrive-UniversitéLaval/travail/0_these/1_foraging_areas/codes_article/1_depth_distribution")
+setwd(".../codes_article/1_depth_distribution")
 
 
 

@@ -1,15 +1,13 @@
 ################################################################
 ## Shape the dataset from Krumhansl et al.                    ##
 ##                                                            ##
-## Andeol Bourgouin                                           ##
-## andeol.bourgouin.1@ulaval.ca                               ##
 ################################################################
 
 
 
 
 #### initialisation ####
-setwd("/Users/andeolbourgouin/Library/CloudStorage/OneDrive-UniversitéLaval/travail/0_these/1_foraging_areas/codes_article/1_depth_distribution")
+setwd(".../codes_article/1_depth_distribution")
 library(tidyverse)    # for data manipulation
 
 # Read dataset

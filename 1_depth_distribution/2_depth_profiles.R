@@ -2,15 +2,13 @@
 ## Creates mean depth distribution profiles of Calanus abundances       ##
 ## for finmarchicus ans hyperboreus at diff stages active / in diapause ##   
 ##                                                                      ##
-## Andeol Bourgouin                                                     ##
-## andeol.bourgouin.1@ulaval.ca                                         ##
 ##########################################################################
 
 # Creates a mean depth distribution profile
 
 #-- Initialisation
 
-setwd("/Users/andeolbourgouin/Library/CloudStorage/OneDrive-UniversitéLaval/travail/0_these/1_foraging_areas/codes_article/1_depth_distribution")
+setwd(".../codes_article/1_depth_distribution")
 library(ggplot2)
 library(tidyverse)
 
