@@ -21,5 +21,5 @@ includes R codes aiming at changing the outputs of MINDZ into 2D density data.
 
 
 ## 3- Results visualisation
-[This folder](https://github.com/ArionRufus/right_whale_foraging_seascape/blob/master/3_Results_visualisation/visu.md) describes the code used to create maps and graphics from aggregation data.  
+[This folder](https://github.com/ArionRufus/right_whale_foraging_seascape/blob/master/3_results_visualisation/visu.md) describes the code used to create maps and graphics from aggregation data.  
 
