@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# Path for NetCDF libraries
+export LD_LIBRARY_PATH=/opt/local/lib
+
+# Static scheduling for parallelization: force splitting tasks according to ...
+export OMP_DYNAMIC=FALSE
+
+# ... maximum number of threads (CPUs)
+export OMP_NUM_THREADS=8
+
+# Increase the maximum size of stack variables for parallelization (in Kbytes)
+#ulimit -s 2048576
+
+./test_run.x > test.out
+
+exit 0

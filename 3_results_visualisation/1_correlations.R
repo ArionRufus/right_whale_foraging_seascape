@@ -1,0 +1,786 @@
+################################################################
+## Aims at shaping sightings data,                            ##
+## and correlate sightings with aggregation values.           ##
+##                                                            ##
+## Andeol Bourgouin                                           ##
+## andeol.bourgouin.1@ulaval.ca                               ##
+################################################################
+
+
+library(sf)        # spatial manipulation
+library(maps)      # package to have continents borders
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(lubridate) # deal with temporal data
+library(terra)     # to open and mainupulate spatial data from models
+library(tmap)      # interactive map to show polygons
+library(stringr)   # to manipulated characters
+library(corrplot)  # To create correlation plots
+
+
+setwd("/Users/andeolbourgouin/Library/CloudStorage/OneDrive-UniversitéLaval/travail/0_these/1_foraging_areas/codes_article/3_results_visualisation")
+
+deg_acc <- 0.05   # desired spatial accuracy in degrees
+set.seed(123)     # fix random for reproductibility
+
+
+
+
+########################################
+#### -- GET SIGHTINGS FROM CONSORTIUM-- ####
+
+
+##
+#-- Read and merge the 2 data frames : 
+NARWC_aerial_2019_2021 <- read.csv("./sightings/Sightings_NARWC/Dan & Fanny - RIWHs & effort - aerial 2019-2021.csv", sep=",")
+NARWC_aerial           <- read.csv("./sightings/Sightings_NARWC/Dan & Fanny - RIWHs & effort - aerial 2015-2018.csv", sep=",") |>
+  rbind(NARWC_aerial_2019_2021)                                                                                                |>
+  filter(YEAR >= 2017)             # Just keep data from 2017
+
+
+##
+#-- Filter the sightings to keep using codes LEGTYPE LEGSTAGE
+NARWC_aerial_filt  <- subset(NARWC_aerial, (NARWC_aerial$LEGTYPE == 2 & NARWC_aerial$LEGSTAGE %in% c("1", "2", "3", "4", "5", "7")))
+NARWC_aerial_filt2 <- subset(NARWC_aerial, (NARWC_aerial$LEGTYPE == 7 & NARWC_aerial$LEGSTAGE %in% c("1", "2", "5")))
+NARWC_aerial_filt3 <- subset(NARWC_aerial, (NARWC_aerial$LEGTYPE == 9 & NARWC_aerial$LEGSTAGE %in% c("1", "2")))
+NARWC_aerial_filt4 <- subset(NARWC_aerial, (NARWC_aerial$LEGTYPE == 5 & NARWC_aerial$LEGSTAGE %in% c("1", "2")))
+NARWC_aerial_filt5 <- subset(NARWC_aerial, (NARWC_aerial$LEGTYPE == 6 & NARWC_aerial$LEGSTAGE %in% c("1", "2")))
+NARWC_aerial <- rbind(NARWC_aerial_filt, NARWC_aerial_filt2, NARWC_aerial_filt3, NARWC_aerial_filt4, NARWC_aerial_filt5)
+
+rm(NARWC_aerial_filt, NARWC_aerial_filt2, NARWC_aerial_filt3, NARWC_aerial_filt4, # remove useless dataset
+   NARWC_aerial_filt5, NARWC_aerial_2019_2021)
+
+
+##
+#-- Shape data : 
+NARWC_aerial$SPECCODE <- ifelse(NARWC_aerial$SPECCODE == "", 0, 1) |> as.factor() # 1 = presence, 0 = absence
+
+
+NARWC_aerial <- NARWC_aerial                |> 
+  dplyr::filter(LAT_DD > 41.5)              |>  # Remove data south of the gulf of Maine
+  mutate(Date = make_date(YEAR, MONTH, DAY),    # create a formatted date
+         obs  = 'surv',                         # it's sightings from survey, not opportunistic
+         Lat  = round(LAT_DD  / deg_acc)*deg_acc ,        # Round coordinates
+         Long = round(LONG_DD / deg_acc)*deg_acc)    |>    
+  group_by(Lat, Long, Date)                 |>  # for each time-space, 
+  arrange(desc(SPECCODE))                   |>  # put first presence then absences
+  slice(1)                                  |>  # just keep the first value -> will be presence if there are both presence and absence
+  ungroup()                                 |>
+  group_by(FILEID)                          |>  # for each flight, 
+  filter(any(SPECCODE == 1))                |>  # remove flight data if no presence was observed
+  ungroup()                                 |>
+  select(Lat, Long, Date, Sp_code = SPECCODE, obs)
+
+length(which(NARWC_aerial$Sp_code == 1))        # nb of presences
+
+
+##
+#-- Read and filter consortium opportunistic sightings : 
+NARWC_opport <- read.csv("./sightings/Sightings_NARWC/Dan & Fanny - RIWHs & effort - opp & ship 1997-2021.csv", sep=",") |>
+  filter(YEAR >= 2017)
+
+NARWC_opport_filt  <- subset(NARWC_opport, (NARWC_opport$LEGTYPE == 2 & NARWC_opport$LEGSTAGE %in% c("1", "2", "3", "4", "5", "7")))
+NARWC_opport_filt2 <- subset(NARWC_opport, (NARWC_opport$LEGTYPE == 7 & NARWC_opport$LEGSTAGE %in% c("1", "2", "5")))
+NARWC_opport_filt3 <- subset(NARWC_opport, (NARWC_opport$LEGTYPE == 9 & NARWC_opport$LEGSTAGE %in% c("1", "2")))
+NARWC_opport_filt4 <- subset(NARWC_opport, (NARWC_opport$LEGTYPE == 5 & NARWC_opport$LEGSTAGE %in% c("1", "2")))
+NARWC_opport_filt5 <- subset(NARWC_opport, (NARWC_opport$LEGTYPE == 6 & NARWC_opport$LEGSTAGE %in% c("1", "2")))
+
+
+##
+#-- shape data : 
+NARWC_opport <- rbind(NARWC_opport_filt, NARWC_opport_filt2, NARWC_opport_filt3, NARWC_opport_filt4, NARWC_opport_filt5) |>
+  filter(SPECCODE == "RIWH" &                    # just take right whales sightings
+           LAT_DD   >   41.5)    |>                # Remove data south of the gulf of Maine
+  mutate(Date     = make_date(YEAR, MONTH, DAY), # create a formatted date
+         obs      = 'oport',                     # it's opportunistic
+         SPECCODE = 1) |>                        # SPECCODE = presences
+  select(Lat = LAT_DD, Long = LONG_DD, Date, Sp_code = SPECCODE, obs)
+
+rm(NARWC_opport_filt, NARWC_opport_filt2, NARWC_opport_filt3, NARWC_opport_filt4, NARWC_opport_filt5)
+
+
+##
+#-- Spatial representation of the consortium data : 
+# map boundaries:
+lonmin <- -72
+lonmax <- -52
+latmin <- 41.4
+latmax <- 52
+
+world1 <- sf::st_as_sf(map('world', plot = FALSE, fill = TRUE)) # download map background
+
+ggplot() + 
+  # Map background :
+  geom_sf(data = world1,     
+          linewidth = 0.1,     
+          fill = 'grey30') +  
+  # absences :
+  geom_point (data = NARWC_aerial |> filter(Sp_code == 0), aes(x = Long, y = Lat), 
+              size  = 0.05,            
+              alpha = 0.05, 
+              color = '#ff6f69') +   
+  # presences :
+  geom_point (data = NARWC_aerial |> filter(Sp_code == 1), aes(x = Long, y = Lat), 
+              size  = 0.1,            
+              alpha = 1, 
+              color = '#96ceb4') +   
+  
+  # opportunistic presences :
+  geom_point (data = NARWC_opport, aes(x = Long, y = Lat),
+              size  = 0.1,
+              alpha = 1,
+              color = '#337ba7') +
+  # boundaries :
+  coord_sf(xlim=c(lonmin, lonmax),ylim=c(latmin, latmax) ) +  
+  # scale numbers : 
+  scale_x_continuous(breaks = seq(lonmin, lonmax, by = 5)) +
+  scale_y_continuous(breaks = seq(latmin, latmax, by = 5)) +
+  # theme :
+  theme_minimal()
+
+
+##
+#-- Associate data to regions
+NARWC_aerial$region = NA
+NARWC_aerial$region[which(NARWC_aerial$Lat <  45)] = "GOM"
+NARWC_aerial$region[which(NARWC_aerial$Lat >= 45)] = "GSL"
+
+NARWC_opport$region = NA
+NARWC_opport$region[which(NARWC_opport$Lat <  45)] = "GOM"
+NARWC_opport$region[which(NARWC_opport$Lat >= 45)] = "GSL"
+
+
+
+
+
+#################################
+#### -- GET DFO SIGHTINGS -- ####
+
+##
+#-- Get presences sightings : 
+# read all data :
+aerial_2017a_DFO <- read.csv("./sightings/Sightings_DFO/20170528_193203_20170928_200038_UTC_Platform_Teleost_Survey_Teleost2017.csv", sep=",") |>
+  select('Lat', 'Long', 'DT_utc',  'Sp_code', 'Observation_id')
+aerial_2017b_DFO <- read.csv("./sightings/Sightings_DFO/20170829_092730_20171115_161846_UTC_Platform_Twin Otter_Survey_NARW_2017.csv", sep=",") |>
+  select('Lat', 'Long', 'DT_utc',  'Sp_code', 'Observation_id')
+aerial_2018_DFO  <- read.csv("./sightings/Sightings_DFO/20180410_155125_20181125_201024_UTC_Platform_337 JOD_337 YOB_Partenavia_Twin Otter_Survey_NARW_2018.csv", sep=",") |>
+  select('Lat', 'Long', 'DT_utc',  'Sp_code', 'Observation_id')
+aerial_2019_DFO  <- read.csv("./sightings/Sightings_DFO/20190429_110432_20191104_211717_UTC_Platform_Cessna 337 YOB 337 ZWF_Survey_NARW_2019.csv", sep=",") |>
+  select('Lat', 'Long', 'DT_utc',  'Sp_code', 'Observation_id')
+aerial_2020_DFO  <- read.csv("./sightings/Sightings_DFO/20200425_161233_20201115_194750_UTC_Platform_Twin Otter_337 YOB_337 ZWF_Survey_NARW_2020.csv", sep=",") |>
+  select('Lat', 'Long', 'DT_utc',  'Sp_code', 'Observation_id')
+aerial_2021_DFO  <- read.csv("./sightings/Sightings_DFO/NARW2021_dataSharing.csv", sep=",") |>
+  select(Lat = 'Lat_sight', Long = 'Long_sight', DT_utc = 'Date_time_utc',  'Sp_code', 'Observation_id')
+
+# combine all data :
+aerial_DFO <- rbind(aerial_2017a_DFO, aerial_2017b_DFO, aerial_2018_DFO, aerial_2019_DFO, aerial_2020_DFO, aerial_2021_DFO)
+rm(aerial_2017a_DFO, aerial_2017b_DFO, aerial_2018_DFO, aerial_2019_DFO, aerial_2020_DFO, aerial_2021_DFO)
+
+
+##
+#-- Get planes tracks : 
+# (it will be used to extract the absences)
+# read all data :
+Tracks_2017a <- read.delim("./sightings/Tracks_DFO/20170528_193203_20170928_200038_UTC_Platform_Teleost_Survey_Teleost2017.txt") |>
+  select('Lat', 'Long', 'DT_utc')
+Tracks_2017b <- read.delim("./sightings/Tracks_DFO/20170829_122240_20171115_161846_UTC_Platform_Twin Otter_Survey_NARW_2017.txt") |>
+  select('Lat', 'Long', 'DT_utc')
+Tracks_2018  <- read.delim("./sightings/Tracks_DFO/20180410_155125_20181125_201024_UTC_Platform_337 JOD_337 YOB_Partenavia_Twin Otter_Survey_NARW_2018-20211124.txt") |>
+  select('Lat', 'Long', 'DT_utc')
+Tracks_2019  <- read.delim("./sightings/Tracks_DFO/20190429_110434_20191104_211717_UTC_Platform_337 YOB_337 ZWF_Twin Otter_Survey_NARW_2019.txt") |>
+  select('Lat', 'Long', 'DT_utc')
+Tracks_2020  <- read.delim("./sightings/Tracks_DFO/20200425_161233_20201115_194750_UTC_Platform_Twin Otter_337 YOB_337 ZWF_Survey_NARW_2020.txt") |>
+  select('Lat', 'Long', 'DT_utc')
+Tracks_2021  <- read.delim("./sightings/Tracks_DFO/20210414_122653_20211112_205617_UTC_Platform_337 IGB_337 YOB_337 ZWF_Twin Otter_Survey_NARW_2021.txt") |>
+  select('Lat', 'Long', 'DT_utc')
+
+# combine all data :
+Tracks <- rbind(Tracks_2017a, Tracks_2017b, Tracks_2018, Tracks_2019, Tracks_2020, Tracks_2021)
+rm(Tracks_2017a, Tracks_2017b, Tracks_2018, Tracks_2019, Tracks_2020, Tracks_2021)
+
+
+##
+#-- Shape presences data : 
+presence <- subset(aerial_DFO, Sp_code == "Eg") |>  # just keep right whales obs
+  mutate(Date    = as.Date(DT_utc),                 # put date as a date format
+         Lat     = round(Lat  / deg_acc)*deg_acc,   # Round coordinates
+         Long    = round(Long / deg_acc)*deg_acc, 
+         Sp_code = 1,                               # 1 = presences
+         obs  = 'surv')                         |>  # it's sightings from survey, not opportunistic
+  filter(!is.na(Observation_id))                |>  # remove observations without obs id
+  distinct(Observation_id, .keep_all = TRUE)    |>  # remove double observations
+  select('Lat', 'Long', 'Date',  'Sp_code', 'obs')
+
+rm(aerial_DFO)
+
+
+##
+#-- Shape absences data : 
+absences <- Tracks                            |>
+  mutate(Date    = as.Date(DT_utc),                # put date as a date format
+         Lat     = round(Lat  / deg_acc)*deg_acc,  # Round coordinates
+         Long    = round(Long / deg_acc)*deg_acc, 
+         Sp_code = 0,                              # 0 = absences
+         obs     = 'surv')                    |>   # it's sightings from survey, not opportunistic
+  distinct(Long, Lat, Date, .keep_all = TRUE) |>   # just keep 1 absence for each space-time
+  select('Lat', 'Long', 'Date',  'Sp_code', 'obs')
+
+rm(Tracks)
+
+
+##
+#-- Combine the 2 datasets : 
+# and just keep 1 presence if there are prenseces 
+# and absences at the same space-time, 
+# and remove flight without presence :
+dfo_sightings <- rbind(presence, absences) |>
+  group_by(Lat, Long, Date)                |>     # for each time-space, 
+  arrange(desc(Sp_code))                   |>     # put first presence then absence
+  slice(1)                                 |>     # just keep the first value -> will be presence if there are both presence and absence
+  ungroup()                                |>
+  group_by(Date)                           |>     # for each date,
+  filter(any(Sp_code == 1))                |>     # just keep data if there is at least 1 presence
+  ungroup()
+
+
+
+rm(presence, absences) # remove useless data
+length(which(dfo_sightings$Sp_code == 1)) # nb of presences
+
+
+
+#
+#-- match data with geographical regions :
+
+# Create polygons for the 3 regions :
+GOM <- list(matrix(c(-70.531459, 41.664547, 
+                     -71.983594, 43.778476, 
+                     -65.958130, 45.795128, 
+                     -62.285094, 45.389235, 
+                     -66.008756, 43.767041, 
+                     -65.926332, 40.850759, 
+                     -70.531459, 41.664547), 
+                   ncol = 2, byrow = TRUE))
+polygon_GOM <- vect(GOM, type = "polygons", crs = "EPSG:4326")
+
+SS  <- list(matrix(c(-62.285094, 45.389235, 
+                     -66.008756, 43.767041, 
+                     -65.926332, 40.850759,
+                     -55.451975, 44.389874,
+                     -55.677057, 46.997331,
+                     -62.285094, 45.389235), 
+                   ncol = 2, byrow = TRUE))
+polygon_SS  <- vect(SS,  type = "polygons", crs = "EPSG:4326")
+
+GSL <- list(matrix(c(-62.285094, 45.389235, 
+                     #-66.008756, 43.767041, 
+                     -55.677057, 46.997331,
+                     -55.889487, 52.186921, 
+                     -70.499648, 49.011441, 
+                     -65.958130, 45.795128, 
+                     -62.285094, 45.389235), 
+                   ncol = 2, byrow = TRUE))
+polygon_GSL <- vect(GSL, type = "polygons", crs = "EPSG:4326")
+
+polygon_GOM$name <- "GOM"
+polygon_GSL$name <- "GSL"
+polygon_SS$name  <- "SS"
+
+# Look at the polygons
+tmap_mode("view") # activate the interactive view
+tm_shape(polygon_GOM) + 
+  tm_polygons(col = "red", alpha = 0.5) +
+  tm_shape(polygon_GSL) +
+  tm_polygons(col = "blue", alpha = 0.5) +
+  tm_shape(polygon_SS) +
+  tm_polygons(col = "green", alpha = 0.5) +
+  tm_basemap("OpenStreetMap") +
+  tm_view(set.view = c(-64.064220, 46.8, 5))  # Longitude, latitude, niveau de zoom
+
+# merge polygons
+all_polygons <- rbind(polygon_GOM, polygon_GSL, polygon_SS)
+
+# Associate each data with it region
+dfo_sightings$region = NA
+dfo_sightings$ID = paste(dfo_sightings$Lat, dfo_sightings$Long, dfo_sightings$Date, sep = "_")
+points <- vect(dfo_sightings, geom = c("Long", "Lat"), crs = "EPSG:4326")
+
+result  <- intersect(points, all_polygons)
+matches <- match(dfo_sightings$ID, result$ID)  # Associer chaque ID original à celui du résultat
+dfo_sightings$region <- result$name[matches]   # Appliquer les valeurs, en gardant NA pour les non-matches
+
+
+
+
+##
+#-- Spatial representation of the consortium data : 
+ggplot() + 
+  # Map background :
+  geom_sf(data = world1,     
+          linewidth = 0.1,     
+          fill = 'grey30') +  
+  # absences :
+  geom_point (data = dfo_sightings |> filter(Sp_code == 0 & region == "SS"), aes(x = Long, y = Lat),
+              size  = 0.05,
+              alpha = 0.05,
+              color = '#ff6f69') +
+  # presences :
+  geom_point (data = dfo_sightings |> filter(Sp_code == 1 & region == "SS"), aes(x = Long, y = Lat), 
+              size  = 0.1,            
+              alpha = 1, 
+              color = '#96ceb4') +   
+  # boundaries :
+  coord_sf(xlim=c(lonmin, lonmax),ylim=c(latmin, latmax) ) +  
+  # scale numbers : 
+  scale_x_continuous(breaks = seq(lonmin, lonmax, by = 5)) +
+  scale_y_continuous(breaks = seq(latmin, latmax, by = 5)) +
+  # theme :
+  theme_minimal()
+
+
+
+
+
+
+#################################
+#### -- MERGE SIGHTINGS -- ####
+dfo_sightings <- dfo_sightings |> select(-ID)
+all_sightings <- rbind(NARWC_aerial, NARWC_opport, dfo_sightings)
+save(all_sightings, file = "./sightings/all_sightings.Rdata")
+
+
+
+
+
+#################################
+#### -- COPEPODS REGIONS BUFFER -- ####
+
+# remove all sightings at bottom depth >=0 and <=600
+
+# open bottom depth raster (data form gebco) :
+the_bdep <- rast("./other_data/gebco_grand.tif")
+
+# create spatial object from coordonates of all_sightings :
+coords <- vect(all_sightings, geom = c("Long", "Lat"), crs = crs(the_bdep))
+
+# extract bathymetry values from the coordinates :
+bathym_values <- terra::extract(the_bdep, coords)
+all_sightings$bdep <- bathym_values[, 2]
+
+# remove all sightings at bottom depth >=0 and <=600 : 
+all_sightings <- all_sightings |>
+  filter(bdep > -600 & bdep <0)
+
+
+# Spatial representation of the data : 
+ggplot() + 
+  # Map background :
+  geom_sf(data = world1,     
+          linewidth = 0.1,     
+          fill = 'grey40') +  
+  # absences :
+  geom_point (data = all_sightings |> filter(Sp_code == 0), aes(x = Long, y = Lat),
+              size  = 0.05,
+              alpha = 0.05,
+              color = '#ED7676') +
+  # survey presences :
+  geom_point (data = all_sightings |> filter(Sp_code == 1 & obs == 'surv'), aes(x = Long, y = Lat), 
+              size  = 0.1,            
+              alpha = 0.2, 
+              color = '#3293AE') +   
+  # opportunistic presences :
+  geom_point (data = all_sightings |> filter(Sp_code == 1 & obs == 'oport'), aes(x = Long, y = Lat), 
+              size  = 0.1,            
+              alpha = 0.2, 
+              color = '#6BAE68') +   
+  # boundaries :
+  coord_sf(xlim=c(lonmin, lonmax),ylim=c(latmin, latmax) ) +  
+  # scale numbers : 
+  scale_x_continuous(breaks = seq(lonmin, lonmax, by = 4)) +
+  scale_y_continuous(breaks = seq(latmin, latmax, by = 4)) +
+  # theme :
+  theme_minimal()+
+  theme(
+    axis.text  = element_blank(), # Supprime les valeurs des axes
+    axis.ticks = element_blank(), # Supprime les ticks des axes
+    axis.title = element_blank()  # Supprime les légendes des axes
+  )
+
+size = 0.6
+ggsave(
+  "./results/sightings.png",
+  dpi    = 1000,     # the resolution
+  width  = 10*size,
+  height = 8*size,
+  bg     = "white"  # the background color
+)
+
+
+# Save dataset :
+save(all_sightings, file = "./other_data/all_sightings.Rdata")
+
+
+
+
+
+
+#################################
+#### -- EXTRACT AGGREGATION VALUES -- ####
+
+# for each sighting, 
+# associate aggregation values of each copepod class. 
+# aggregation values are kept only if the sighting corresponds in space and time 
+# to a plausible copepod class 1 state of diapause. 
+# ex : for a sighting in may in gulf of St Lawrence, Young C. finmarchicus is plausible, 
+# but Late C. hyperboreus in diapause in not plausible. 
+# We also associate mean aggregation values. 
+
+# LH0 = Late stage of diapausing C. hyperboreus
+# LF0 = Late stage of diapausing C. finmarchicus
+# LF1 = Late stage of active C. spp
+# YF1 = Young stage of active C.finmarchicus
+
+
+
+correl_aggreg  <- NULL                        # will store the final dataset
+sighting_dates <- unique(all_sightings$Date)  # all the dates of sightings
+
+
+for (h in c("LH0", "LF0", "LF1", "YF1")) {    # For each copepod class,
+  print(h)
+  
+  correl_temp <- all_sightings |>        # the temporal df where we put sightings with all aggregation values
+    mutate(aggreg      = NA,             # aggregation variable, with only NA for now
+           aggreg_mean = NA,             # mean aggregation variable, with only NA for now
+           copetype    = h)              # only the desired copepod class
+  
+  copesp <- str_sub(h,2, 2)              # species, F for finmarchicus of H for hyperboreus
+  dia    <- as.numeric(str_sub(h,3, 3))  # diapause stage, 1 for active, 0 for diapause
+  
+  aggreg_mean <- rast(paste0("./other_data/mean_aggreg_", h, ".tiff")) |>  # Read mean aggregation map
+    aggregate(fact = 2, fun = mean)                                        # decrease resolution by fact 2
+  
+  
+  # Create a diapause column, and determinante for each sighting (each line) if 
+  # it corresponds to diapause or active time, by using the region, time and copepod class
+  if (copesp == "F"){                 # if copepod species is finmarchicus
+    correl_temp <- correl_temp |>
+      mutate(
+        month = format(Date, "%m"),   # create a month variable
+        diapause = case_when(         # create the diapause variable
+          (region == "GSL" & month >= "04" & month <= "07") ~ 1,
+          (region == "GOM" & month >= "04" & month <= "09") ~ 1,
+          (region == "SS"  & month >= "04" & month <= "06") ~ 1,
+          TRUE ~ 0)) |>
+      select(-month)                  # remove the month variable
+  }else{                              # if species is hyperboreus
+    correl_temp <- correl_temp |>
+      mutate(
+        month = format(Date, "%m"),
+        diapause = case_when(
+          (region == "GSL" & month >= "04" & month <= "06") ~ 1,
+          (region == "SS"  & month >= "04" & month <= "05") ~ 1,
+          TRUE ~ 0)) |>
+      select(-month)
+    
+    if (any(correl_temp$region == "GOM")) { # no hyperboreus in the GoM -> NA
+      correl_temp$diapause[which(correl_temp$region == "GOM")] = NA
+    }
+  }
+  
+  
+  for (i in 1:length(sighting_dates)) {              # For each date :
+    
+    temp_date <- sighting_dates[i]                   # Select the date
+    date_model <- gsub("-", "_", temp_date)          # change form - to _
+    
+    id_temp_sightings <- which(correl_temp$Date == temp_date)     # Ids of sightings with this date
+    
+    #---- part got just having the right diapausing state. 
+    # # if no care of diapausing state, put this part in #
+    # 
+    # # if the diapause state of model doesn't fit with the one of sighting (or if there is only nas), 
+    # # don't extract aggregation values
+    # if (!any(!is.na(correl_temp$diapause[id_temp_sightings]))){
+    #   next}else{
+    #     gloutch <- correl_temp[id_temp_sightings,]|> filter(!is.na(diapause)) |>
+    #       select(diapause)
+    #   }
+    # if (!any(gloutch == dia)){
+    #   next}
+    # 
+    # # just select IDs with diapause match :
+    # id_temp_sightings = id_temp_sightings[
+    #   which(correl_temp$diapause[id_temp_sightings] == dia)]
+    # 
+    #----
+    
+    
+    # write the name of the aggregation map :
+    thefile <- paste0("./other_data/fingrid_", h, "/fingrid_", h, "_",  
+                      date_model, "_traj.tif")
+    
+    # If the file doesn't exist, write it and go to the next date :
+    if (!file.exists(thefile)) {
+      print(paste0("WARNING : the file with date ", date_model, " doesn't exist"))
+      next
+    }
+    
+    
+    aggreg_map  <- rast(thefile)      |>                   # Read the aggregation map
+      aggregate(fact = 2, fun = mean)                      # decrease the resolution
+    
+    temp_sightings <- correl_temp [id_temp_sightings,] |>  # Just select the sightings with the date
+      vect(geom = c("Long", "Lat"), crs = crs(aggreg_map)) # convert into spatial object
+    
+    correl_temp$aggreg[id_temp_sightings]      <- terra::extract(aggreg_map,  temp_sightings)[, 2]  #extract aggregation values
+    correl_temp$aggreg_mean[id_temp_sightings] <- terra::extract(aggreg_mean, temp_sightings)[, 2]  #extract mean aggregation values
+    
+  }
+  correl_aggreg = rbind(correl_aggreg, correl_temp) # add the copepod type df to the general df
+}
+
+rm(viou, correl_temp, values_selected)                                          # remove now useless dataframes
+correl_aggreg <- correl_aggreg |> filter(!is.na(aggreg) | !is.na(aggreg_mean))  # remove NA lines
+
+
+
+
+
+
+
+
+#################################
+#### -- CORRELATIONS -- ####
+
+
+##
+#-- Plot means
+
+# Change factor's order so that it appears wll in the graphs :
+correl_aggreg$Sp_code  <- factor(correl_aggreg$Sp_code,  levels = c("0", "1"))
+correl_aggreg$copetype <- factor(correl_aggreg$copetype, levels = c("LH0", "LF0", "LF1", "YF1"))
+
+# Violin plot of aggregation distribution for prensence / absence :
+ggplot( data =correl_aggreg, aes(x=copetype, y=aggreg, fill = interaction(copetype, Sp_code))) +
+  # the violin plots :
+  geom_violin(width=1, position = position_dodge(width = 0.9), alpha = 1) +
+  # the color of the violins :
+  scale_fill_manual(values = c("LH0.0" = "#3293AE", "LH0.1" = "#3293AE",
+                               "LF0.0" = "#ED7676", "LF0.1" = "#ED7676",
+                               "LF1.0" = "#6BAE68", "LF1.1" = "#6BAE68",
+                               "YF1.0" = "#EDBC4E", "YF1.1" = "#EDBC4E")) +
+  # mean and standar error :
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2, position = position_dodge(width = 0.9)) +
+  #theme :
+  theme_bw() +
+  theme(
+    panel.grid.major.x = element_blank(),          # no vertical line
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_line(size = 0.3), # horizontal line wider
+    panel.grid.major.y = element_line(size = 0.6)
+  ) +
+  guides(fill = "none")+                           # no legend
+  ylim(0, 75) +                                    # y limit to 75
+  xlab("copepod type") +
+  ylab("density")
+
+# save :
+size <- 0.9
+ggsave(
+  "./results/correlations_fin.png",
+  dpi    = 300,     # the resolution
+  width  = 12*size,
+  height = 4*size,
+  bg     = "white"  # the background color
+)
+
+
+
+
+##
+#-- Mean comparisons 
+
+# Select desired copepod class :
+data_stats <- correl_aggreg |> 
+  filter(copetype == "YF1")
+
+var.test(aggreg ~ Sp_code, data = data_stats)
+
+ggplot(data_stats, aes(x = aggreg, fill = Sp_code)) +
+  geom_histogram(aes(y = ..density..), bins = 30, alpha = 0.5, position = "identity") +
+  geom_density(alpha = 0.7) +
+  facet_wrap(~ Sp_code) +
+  theme_minimal()
+
+ggplot(data_stats, aes(sample = aggreg)) +
+  stat_qq() +
+  stat_qq_line() +
+  facet_wrap(~ Sp_code) +
+  theme_minimal()
+
+#no normality, no homoscedasticity -> wilcoxon test
+wilcox.test(aggreg ~ Sp_code, data = data_stats)
+mean(data_stats$aggreg[which(data_stats$Sp_code == "0")])
+mean(data_stats$aggreg[which(data_stats$Sp_code == "1")])
+
+
+
+##
+#-- Logistic regressions
+
+#- For LH0 :
+stats_0_LH0 <- correl_aggreg |> 
+  filter(copetype == "LH0")  |>  
+  mutate(Sp_code = as.numeric(as.character(Sp_code)))
+
+# logistic regression :
+model <- glm(Sp_code ~ aggreg, data = stats_0_LH0, family = binomial)
+summary(model)
+exp(cbind(coef(model), confint(model))) # odds ratio
+
+# logistic regression with mean values :
+model_mean <- glm(Sp_code ~ aggreg_mean, data = stats_0_LH0, family = binomial)
+summary(model_mean)
+exp(cbind(coef(model_mean), confint(model_mean))) # odds ratio
+
+
+#- For LF0 :
+stats_0_LF0 <- correl_aggreg |> 
+  filter(copetype == "LF0", Sp_code != "bck") |>
+  mutate(Sp_code = as.numeric(as.character(Sp_code)))
+
+# logistic regression :
+model <- glm(Sp_code ~ aggreg, data = stats_0_LF0, family = binomial)
+summary(model)
+exp(cbind(coef(model), confint(model))) # odds ratio
+
+
+#- For LF1 :
+stats_0_LF1 <- correl_aggreg |> 
+  filter(copetype == "LF1", Sp_code != "bck") |>
+  mutate(Sp_code = as.numeric(as.character(Sp_code)))
+
+# logistic regression :
+model <- glm(Sp_code ~ aggreg, data = stats_0_LF1, family = binomial)
+summary(model)
+exp(cbind(coef(model), confint(model))) # odds ratio
+
+# logistic regression with mean values :
+model_mean <- glm(Sp_code ~ aggreg_mean, data = stats_0_LF1, family = binomial)
+summary(model_mean)
+exp(cbind(coef(model_mean), confint(model_mean))) # odds ratio
+
+
+# For YF1 :
+stats_0_YF1 <- correl_aggreg |> 
+  filter(copetype == "YF1", Sp_code != "bck") |>
+  mutate(Sp_code = as.numeric(as.character(Sp_code)))
+
+# logistic regression :
+model <- glm(Sp_code ~ aggreg, data = stats_0_YF1, family = binomial)
+summary(model)
+exp(cbind(coef(model), confint(model))) # odds ratio
+
+
+# transform aggregation values so that it is between 0 and 1 :
+stats_0_LH0$aggreg = stats_0_LH0$aggreg / max(stats_0_LH0$aggreg)
+stats_0_LF0$aggreg = stats_0_LF0$aggreg / max(stats_0_LF0$aggreg)
+stats_0_LF1$aggreg = stats_0_LF1$aggreg / max(stats_0_LF1$aggreg)
+stats_0_YF1$aggreg = stats_0_YF1$aggreg / max(stats_0_YF1$aggreg)
+stats_0_LH0$aggreg_mean = stats_0_LH0$aggreg_mean / max(stats_0_LH0$aggreg_mean)
+stats_0_LF0$aggreg_mean = stats_0_LF0$aggreg_mean / max(stats_0_LF0$aggreg_mean)
+stats_0_LF1$aggreg_mean = stats_0_LF1$aggreg_mean / max(stats_0_LF1$aggreg_mean)
+stats_0_YF1$aggreg_mean = stats_0_YF1$aggreg_mean / max(stats_0_YF1$aggreg_mean)
+
+
+# plot logistic regression :
+ggplot() +
+  # regression wit mean aggregation values, in dashed shape :
+  geom_line  (data = stats_0_YF1, aes(x = aggreg_mean, y = Sp_code), method = "glm", linetype = "dashed", linewidth = 1, 
+              alpha = 0.7, method.args = list(family = "binomial"), se = TRUE, color = "#EDBC4E", stat="smooth") +
+  geom_line  (data = stats_0_LF1, aes(x = aggreg_mean, y = Sp_code), method = "glm", linetype = "dashed", linewidth = 1, 
+              alpha = 0.7, method.args = list(family = "binomial"), se = TRUE, color = "#6BAE68", stat="smooth") +
+  geom_line  (data = stats_0_LF0, aes(x = aggreg_mean, y = Sp_code), method = "glm", linetype = "dashed", linewidth = 1, 
+              alpha = 0.7, method.args = list(family = "binomial"), se = TRUE, color = "#ED7676", stat="smooth") +
+  geom_line  (data = stats_0_LH0, aes(x = aggreg_mean, y = Sp_code), method = "glm", linetype = "dashed", linewidth = 1, 
+              alpha = 0.7, method.args = list(family = "binomial"), se = TRUE, color = "#3293AE", stat="smooth") +
+  
+  # regression wit aggregation values, in plain shape :
+  geom_smooth(data = stats_0_YF1, aes(x = aggreg,      y = Sp_code), method = "glm", 
+              method.args = list(family = "binomial"), se = TRUE, color = "#EDBC4E") +
+  geom_smooth(data = stats_0_LF1, aes(x = aggreg,      y = Sp_code), method = "glm", 
+              method.args = list(family = "binomial"), se = TRUE, color = "#6BAE68") +
+  geom_smooth(data = stats_0_LF0, aes(x = aggreg,      y = Sp_code), method = "glm", 
+              method.args = list(family = "binomial"), se = TRUE, color = "#ED7676") +
+  geom_smooth(data = stats_0_LH0, aes(x = aggreg,      y = Sp_code), method = "glm", 
+              method.args = list(family = "binomial"), se = TRUE, color = "#3293AE") +
+  xlim(0, 1) +
+  ylim(0,1)    +
+  theme_bw() +
+  theme(
+    panel.grid.minor.y = element_blank(),          # no vertical line
+    panel.grid.minor.x = element_blank(),
+  )
+
+# save plot :
+size = 1
+ggsave(
+  "./results/logistic_0.png",
+  dpi    = 300,     # the resolution
+  width  = 8*size,
+  height = 3*size,
+  bg     = "white"  # the background color
+)
+
+
+
+
+
+
+
+#### CORREL PATTERNS ####
+
+# Test the correlation between all the copepod types. 
+
+# Change the data frame so that one line represents 1 spatio-temporal observation, 
+# and each column represents an aggregation value for a copepod type :
+correl_type <- correl_aggreg        |>
+  select(-c(diapause, aggreg_mean)) |> # remove diapause and mean aggregation variables
+  pivot_wider(
+    names_from  = copetype,            # each different value of this variable become a column
+    values_from = aggreg,
+    values_fn   = mean)             |>
+  select(LH0, LF0, LF1, YF1)        |>
+  rename("LH-D" = LH0, 
+         "LF-D" = LF0, 
+         "LC-A" = LF1, 
+         "YF-A" = YF1)
+
+# Plot histograms :
+ggplot(correl_aggreg, aes(x = aggreg, color = copetype)) +
+  geom_density() +
+  labs(title = "values distribution", x = "Valeur", y = "Fréquence") +
+  scale_color_manual(values = c("#ED7676", "#6BAE68", "#3293AE", "#EDBC4E")) +
+  scale_x_log10() +
+  theme_bw()
+
+
+# Correlation test, using spearman method : 
+cor.test(correl_type$"LH-D", correl_type$"LC-A", method = "spearman")
+
+# correlation matrix : 
+cor_matrix <- cor(correl_type, use = "complete.obs", method = "spearman")
+
+# correlation plot. :
+corrplot(cor_matrix, method = "color", type = "lower", 
+                addCoef.col = "white", tl.col = "black", tl.srt = 45, diag = T)
+
+# Save the correlation plot :
+png("./results/corrplot.png", width = 1500, height = 1500, res = 300)
+
+corrplot(cor_matrix, method = "color", type = "lower", 
+         addCoef.col = "white", tl.col = "black", tl.srt = 45, diag = T)
+
+dev.off()

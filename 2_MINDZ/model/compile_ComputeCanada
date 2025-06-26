@@ -1,0 +1,56 @@
+# Compilation with gfortran
+
+
+### Source files
+### DO NOT use ~ to refer to HOME: use $HOME instead
+
+SRC="OPA_GET_XY_LL.f90 rng_par_zig.f90 ll_to_xy_NEMO.f90 link_mod.f90 abstList_mod.f90 partClass_mod.f90 partSubClass_mod.f90 def_domain.f90 lagrangian_motion.f90 partFun_mod.f90 test_model_parallel.f90 zeros.f90"
+
+### Path to netcdf libraries compiled with gfortran
+### May need to export the path in the LD_LIBRARY_PATH environment variable
+
+INCDIR=-I$EBROOTNETCDFMINFORTRAN/include
+# KB INCDIR=-I/usr/include
+
+
+
+
+LIBS="-lnetcdf -lnetcdff"
+
+
+### Pre-processing options: -DBACK = transport backward in time. Forward is default.
+#   -DPAR   = parallelization switch
+#   -Dmiam  = take food input file into account
+#   -Dvert  = take into account vertical migration
+#   -DCIOPS = ciops imputs
+#   -DDEBUG
+#   -DFTLE  = when computing ftle (no random in the initial parts positions, and special output files)
+
+#PP="-cpp -DADV -DBACK"
+#PP="-cpp -DADV -DINITB -DPHYSIO"
+#PP="-cpp -DADV -DPHYSIO -DPAR" # basic physiologic and advectif run
+#PP="-cpp -DPHYSIO -DPAR"    # run with physiology (static run)
+PP="-cpp -DADV -DDEBUG -DCIOPS"      # run with advection and physiology (hf_lf_run)
+
+### Optimization options: 3 possibilities
+
+#1- Debugging
+#OPT="-m64 -std=legacy -frange-check -fbounds-check -g -O0"
+
+#2- Optimizing 
+OPT="-m64 -std=legacy -Ofast"
+
+#3- Parallelizing
+#OPT="-m64 -std=legacy -fopenmp -Ofast"
+
+
+### Executable file
+
+EXE=model_execution.x
+
+
+###- Actual compilation
+
+gfortran $PP $OPT $SRC $INCDIR $LIBS -mcmodel=large -o $EXE
+
+mv -i $EXE ../run

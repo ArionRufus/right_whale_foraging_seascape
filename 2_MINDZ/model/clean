@@ -1,0 +1,7 @@
+#!/bin/bash
+
+rm -f *.f *.o *.mod *~
+
+echo ''
+echo 'Cleaning done!'
+echo ''

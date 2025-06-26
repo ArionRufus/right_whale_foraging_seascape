@@ -1,0 +1,38 @@
+
+Lmod is automatically replacing "intel/2020.1.217" with "gcc/9.3.0".
+
+
+Lmod is automatically replacing "intel/2020.1.217" with "gcc/9.3.0".
+
+- The project is out-of-sync -- use `renv::status()` for details.
+- The project is out-of-sync -- use `renv::status()` for details.
+- The project is out-of-sync -- use `renv::status()` for details.
+- The project is out-of-sync -- use `renv::status()` for details.
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+Linking to GEOS 3.10.2, GDAL 3.5.1, PROJ 9.0.1; sf_use_s2() is TRUE
+[1] "  inside time :  1  /  5"
+[1] "  inside time :  2  /  5"
+[1] "  inside time :  3  /  5"
+[1] "  inside time :  4  /  5"
+[1] "  inside time :  5  /  5"
+Warning messages:
+1: In geom_map(data = world, map = world, aes(long, lat, map_id = region),  :
+  Ignoring unknown aesthetics: x and y
+2: In geom_map(data = world, map = world, aes(long, lat, map_id = region),  :
+  Ignoring unknown aesthetics: x and y
+3: In geom_map(data = world, map = world, aes(long, lat, map_id = region),  :
+  Ignoring unknown aesthetics: x and y
+4: In geom_map(data = world, map = world, aes(long, lat, map_id = region),  :
+  Ignoring unknown aesthetics: x and y
+5: In geom_map(data = world, map = world, aes(long, lat, map_id = region),  :
+  Ignoring unknown aesthetics: x and y
