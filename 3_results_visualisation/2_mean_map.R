@@ -1,8 +1,6 @@
 #########################################################################
 ## Creates density maps from outputs of the MINDZ model                ##
 ##                                                                     ##
-## Andeol Bourgouin                                                    ##
-## andeol.bourgouin.1@ulaval.ca                                        ##
 #########################################################################
 
 ##
@@ -16,7 +14,7 @@ library(terra    )   # to deal with rasters, for the bathymetry map
 library(tidyterra)   # to plot the bathymetry map
 library(sf       )   # to read whale sightings data
 
-setwd("/Users/andeolbourgouin/Library/CloudStorage/OneDrive-UniversitéLaval/travail/0_these/1_foraging_areas/codes_article/3_results_visualisation")
+setwd(".../codes_article/1_depth_distribution")
 
 load("./other_data/all_sightings.Rdata") # load sightings
 world <- map_data("world")               # the map borders

@@ -2,8 +2,6 @@
 ## Aims at shaping sightings data,                            ##
 ## and correlate sightings with aggregation values.           ##
 ##                                                            ##
-## Andeol Bourgouin                                           ##
-## andeol.bourgouin.1@ulaval.ca                               ##
 ################################################################
 
 
@@ -19,7 +17,7 @@ library(stringr)   # to manipulated characters
 library(corrplot)  # To create correlation plots
 
 
-setwd("/Users/andeolbourgouin/Library/CloudStorage/OneDrive-UniversitéLaval/travail/0_these/1_foraging_areas/codes_article/3_results_visualisation")
+setwd(".../codes_article/1_depth_distribution")
 
 deg_acc <- 0.05   # desired spatial accuracy in degrees
 set.seed(123)     # fix random for reproductibility
